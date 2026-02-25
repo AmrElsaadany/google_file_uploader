@@ -51,13 +51,7 @@
         document.getElementById('loginSection').style.display = 'none';
         document.getElementById('uploadSection').style.display = 'block';
     }
-        document.getElementById('passInput').addEventListener('keypress', function (event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();  // Prevent the default action (form submission) 
-                // Call your login function or any action you want to perform
-                login();
-            }
-        });
+
     // 3. Main Upload Logic
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
         e.preventDefault();
