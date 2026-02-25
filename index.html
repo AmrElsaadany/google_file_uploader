@@ -121,13 +121,15 @@
             // Success/Error Handling
             xhr.onload = () => {
                 btn.disabled = false;
+                // Status 200 or 201 means Google got the file. 
+                // Even if CORS blocks reading the response body, the upload was successful.
                 if (xhr.status === 200 || xhr.status === 201) {
                     status.className = "success";
-                    status.innerText = "Upload Success: " + file.name;
-                    fileInput.value = ""; // Clear for next file
+                    status.innerText = "Upload Success! The file is in your Google Drive.";
+                    fileInput.value = ""; // Clear input
                 } else {
                     status.className = "error";
-                    status.innerText = "Upload failed on Google side. Status: " + xhr.status;
+                    status.innerText = "Upload failed. Google returned status: " + xhr.status;
                 }
             };
 
