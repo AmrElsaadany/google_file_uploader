@@ -119,20 +119,24 @@
             };
 
             // Success/Error Handling
-            xhr.onload = () => {
+           xhr.onload = () => {
                 btn.disabled = false;
-                // Status 200 or 201 means Google got the file. 
-                // Even if CORS blocks reading the response body, the upload was successful.
+            
+                // Status 200/201 means the server got the file. 
+                // We ignore the CORS block because the work is already done.
                 if (xhr.status === 200 || xhr.status === 201) {
                     status.className = "success";
-                    status.innerText = "Upload Success! The file is in your Google Drive.";
-                    fileInput.value = ""; // Clear input
+                    status.innerHTML = `
+                        <strong>Upload Successful!</strong><br>
+                        The file is now in the project folder.<br>
+                        <small>(You can ignore any red CORS messages in the console)</small>
+                    `;
+                    fileInput.value = ""; // Reset for the next file
                 } else {
                     status.className = "error";
-                    status.innerText = "Upload failed. Google returned status: " + xhr.status;
+                    status.innerText = "Upload failed. Server returned status: " + xhr.status;
                 }
             };
-
             xhr.onerror = () => {
                 btn.disabled = false;
                 status.className = "error";
