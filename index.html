@@ -7,3 +7,167 @@
         }
     });
 </script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Secure Drive Uploader</title>
+    <link rel="shortcut icon" type="x-icon" href="favicon.ico">
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 450px; margin: auto; }
+        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input, button { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        #status { margin-top: 15px; font-weight: bold; font-size: 14px; }
+        .error { color: red; } .success { color: green; }
+        #progressBarContainer { width: 100%; background: #eee; border-radius: 5px; display: none; margin: 10px 0; }
+        #progressBar { height: 20px; width: 0%; background: #4CAF50; border-radius: 5px; color: white; text-align: center; font-size: 12px; line-height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div id="loginSection">
+            <h3>Login Required</h3>
+            <input type="password" id="passInput" placeholder="Enter Password (1234)">
+            <button onclick="login()" style="background: #2196F3; color: white; border: none;">Login</button>
+            <div id="loginError" class="error"></div>
+        </div>
+
+        <div id="uploadSection" style="display: none;">
+            <h3>Project File Upload</h3>
+            <form id="uploadForm">
+                <input type="file" id="fileInput" required>
+                <button type="submit" id="btn" style="background: #4CAF50; color: white; border: none;">Upload to Drive</button>
+            </form>
+            <div id="progressBarContainer"><div id="progressBar">0%</div></div>
+            <div id="status"></div>
+            <hr><button onclick="location.reload()" style="background: #eee; border: none;">Logout</button>
+        </div>
+    </div>
+
+<script>
+    // 1. Configuration
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbye3N8PuF85659CNE8mmt_VLhgk6Ld8E4Hh9356dOqEwj4qpP5Hk09FQDsjGGtV-ZU_/exec";
+    let pwd = "";
+
+    // 2. Login Handler
+    function login() {
+        const input = document.getElementById('passInput');
+        if (!input.value) {
+            alert("Please enter the password.");
+            return;
+        }
+        pwd = input.value;
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'block';
+    }
+
+    // 3. Main Upload Logic
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+        const status = document.getElementById('status');
+        const btn = document.getElementById('btn');
+        const pBar = document.getElementById('progressBar');
+        const pCont = document.getElementById('progressBarContainer');
+
+        if (!file) return;
+
+        // UI Reset
+        status.className = ""; 
+        status.innerText = "Authenticating with Google...";
+        btn.disabled = true;
+        pCont.style.display = "none";
+        pBar.style.width = "0%";
+
+        try {
+            // STEP 1: Get the Resumable Upload URL from Apps Script
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'cors', // Ensure CORS is handled
+                headers: { 'Content-Type': 'text/plain' }, // Avoids preflight triggers
+                body: JSON.stringify({ 
+                    action: "getUploadUrl", 
+                    password: pwd, 
+                    filename: file.name, 
+                    mimeType: file.type || 'application/octet-stream' 
+                })
+            });
+
+            // Get the raw text first to check if it's actually JSON
+            const responseText = await response.text();
+            let data;
+            
+            try {
+                data = JSON.parse(responseText);
+            } catch (jsonErr) {
+                // If parsing fails, it's likely a Google Login HTML page or a script error
+                console.error("Non-JSON response received:", responseText);
+                throw new Error("Invalid Server Response. Ensure the Script is deployed to 'Anyone'.");
+            }
+
+            if (data.status !== 'success') {
+                throw new Error(data.message || "Unknown error from Apps Script");
+            }
+
+            // STEP 2: Use the URL to upload the file directly to Drive
+            const uploadUrl = data.uploadUrl;
+            status.innerText = "Uploading to Cairo Project Folder...";
+            pCont.style.display = "block";
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", uploadUrl, true);
+
+            // Progress Tracking
+            xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable) {
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    pBar.style.width = pct + "%";
+                    pBar.innerText = pct + "%";
+                }
+            };
+
+            // Success/Error Handling
+           xhr.onload = () => {
+                btn.disabled = false;
+            
+                // Status 200/201 means the server got the file. 
+                // We ignore the CORS block because the work is already done.
+                if (xhr.status === 200 || xhr.status === 201) {
+                    status.className = "success";
+                    status.innerHTML = `
+                        <strong>Upload Successful!</strong><br>
+                        The file is now in the project folder.<br>
+                        <small>(You can ignore any red CORS messages in the console)</small>
+                    `;
+                    fileInput.value = ""; // Reset for the next file
+                } else {
+                    status.className = "error";
+                    status.innerText = "Upload failed. Server returned status: " + xhr.status;
+                }
+            };
+            xhr.onerror = () => {
+                btn.disabled = false;
+                status.className = "error";
+                status.innerText = "Network error during upload.";
+            };
+
+            // Send the raw binary file
+            xhr.send(file);
+
+        } catch (err) {
+            btn.disabled = false;
+            status.className = "error";
+            status.innerText = err.message;
+            console.error("Process Error:", err);
+            
+            // If it's a password error, reset login
+            if (err.message.includes("Unauthorized") || err.message.includes("Incorrect")) {
+                setTimeout(() => location.reload(), 3000);
+            }
+        }
+    });
+</script>
+</body>
+</html>
