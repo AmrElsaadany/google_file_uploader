@@ -75,10 +75,15 @@
                         mimeType: file.type || 'application/octet-stream'
                     })
                 });
-
+                // ... inside your event listener ..
                 const initData = await initResp.json();
-                if (initData.status !== 'success') throw new Error(initData.message);
-
+               // ADD THIS CHECK:
+                if (initData.status !== 'success' || !initData.uploadUrl) {
+                    throw new Error(initData.message || "Could not retrieve Upload URL from Google.");
+                }
+                
+                const uploadUrl = initData.uploadUrl;
+                // ... now the XHR will have a real URL ...
                 // 2. Upload Direct to Google
                 progCont.style.display = "block";
                 const xhr = new XMLHttpRequest();
