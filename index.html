@@ -34,54 +34,124 @@
         </div>
     </div>
 
-    <script>
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbye3N8PuF85659CNE8mmt_VLhgk6Ld8E4Hh9356dOqEwj4qpP5Hk09FQDsjGGtV-ZU_/exec"; // PASTE YOUR URL HERE
-        let pwd = "";
+<script>
+    // 1. Configuration
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbye3N8PuF85659CNE8mmt_VLhgk6Ld8E4Hh9356dOqEwj4qpP5Hk09FQDsjGGtV-ZU_/exec";
+    let pwd = "";
 
-        function login() {
-            pwd = document.getElementById('passInput').value;
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('uploadSection').style.display = 'block';
+    // 2. Login Handler
+    function login() {
+        const input = document.getElementById('passInput');
+        if (!input.value) {
+            alert("Please enter the password.");
+            return;
         }
+        pwd = input.value;
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'block';
+    }
 
-        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const file = document.getElementById('fileInput').files[0];
-            const status = document.getElementById('status');
-            const btn = document.getElementById('btn');
-            const pBar = document.getElementById('progressBar');
-            const pCont = document.getElementById('progressBarContainer');
+    // 3. Main Upload Logic
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+        const status = document.getElementById('status');
+        const btn = document.getElementById('btn');
+        const pBar = document.getElementById('progressBar');
+        const pCont = document.getElementById('progressBarContainer');
 
-            status.className = ""; status.innerText = "Connecting to Google...";
-            btn.disabled = true;
+        if (!file) return;
 
+        // UI Reset
+        status.className = ""; 
+        status.innerText = "Authenticating with Google...";
+        btn.disabled = true;
+        pCont.style.display = "none";
+        pBar.style.width = "0%";
+
+        try {
+            // STEP 1: Get the Resumable Upload URL from Apps Script
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'cors', // Ensure CORS is handled
+                headers: { 'Content-Type': 'text/plain' }, // Avoids preflight triggers
+                body: JSON.stringify({ 
+                    action: "getUploadUrl", 
+                    password: pwd, 
+                    filename: file.name, 
+                    mimeType: file.type || 'application/octet-stream' 
+                })
+            });
+
+            // Get the raw text first to check if it's actually JSON
+            const responseText = await response.text();
+            let data;
+            
             try {
-                const res = await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: "getUploadUrl", password: pwd, filename: file.name, mimeType: file.type })
-                });
-                const data = await res.json();
-                if (data.status !== 'success') throw new Error(data.message);
-
-                pCont.style.display = "block";
-                const xhr = new XMLHttpRequest();
-                xhr.open("PUT", data.uploadUrl, true);
-                xhr.upload.onprogress = (ev) => {
-                    const pct = Math.round((ev.loaded / ev.total) * 100);
-                    pBar.style.width = pct + "%"; pBar.innerText = pct + "%";
-                };
-                xhr.onload = () => {
-                    btn.disabled = false;
-                    if (xhr.status === 200 || xhr.status === 201) {
-                        status.className = "success"; status.innerText = "Upload Success!";
-                    } else { status.className = "error"; status.innerText = "Direct Upload Error."; }
-                };
-                xhr.send(file);
-            } catch (err) {
-                btn.disabled = false;
-                status.className = "error"; status.innerText = err.message;
+                data = JSON.parse(responseText);
+            } catch (jsonErr) {
+                // If parsing fails, it's likely a Google Login HTML page or a script error
+                console.error("Non-JSON response received:", responseText);
+                throw new Error("Invalid Server Response. Ensure the Script is deployed to 'Anyone'.");
             }
-        });
-    </script>
+
+            if (data.status !== 'success') {
+                throw new Error(data.message || "Unknown error from Apps Script");
+            }
+
+            // STEP 2: Use the URL to upload the file directly to Drive
+            const uploadUrl = data.uploadUrl;
+            status.innerText = "Uploading to Cairo Project Folder...";
+            pCont.style.display = "block";
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", uploadUrl, true);
+
+            // Progress Tracking
+            xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable) {
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    pBar.style.width = pct + "%";
+                    pBar.innerText = pct + "%";
+                }
+            };
+
+            // Success/Error Handling
+            xhr.onload = () => {
+                btn.disabled = false;
+                if (xhr.status === 200 || xhr.status === 201) {
+                    status.className = "success";
+                    status.innerText = "Upload Success: " + file.name;
+                    fileInput.value = ""; // Clear for next file
+                } else {
+                    status.className = "error";
+                    status.innerText = "Upload failed on Google side. Status: " + xhr.status;
+                }
+            };
+
+            xhr.onerror = () => {
+                btn.disabled = false;
+                status.className = "error";
+                status.innerText = "Network error during upload.";
+            };
+
+            // Send the raw binary file
+            xhr.send(file);
+
+        } catch (err) {
+            btn.disabled = false;
+            status.className = "error";
+            status.innerText = err.message;
+            console.error("Process Error:", err);
+            
+            // If it's a password error, reset login
+            if (err.message.includes("Unauthorized") || err.message.includes("Incorrect")) {
+                setTimeout(() => location.reload(), 3000);
+            }
+        }
+    });
+</script>
 </body>
 </html>
