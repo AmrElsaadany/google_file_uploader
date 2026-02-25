@@ -2,116 +2,84 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Secure Large File Upload</title>
+    <title>Secure Drive Uploader</title>
     <style>
         body { font-family: sans-serif; padding: 20px; max-width: 450px; margin: auto; }
         .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         input, button { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
         #status { margin-top: 15px; font-weight: bold; font-size: 14px; }
-        .success { color: green; }
-        .error { color: red; }
+        .error { color: red; } .success { color: green; }
         #progressBarContainer { width: 100%; background: #eee; border-radius: 5px; display: none; margin: 10px 0; }
         #progressBar { height: 20px; width: 0%; background: #4CAF50; border-radius: 5px; color: white; text-align: center; font-size: 12px; line-height: 20px; }
     </style>
 </head>
 <body>
-
     <div class="box">
         <div id="loginSection">
             <h3>Login Required</h3>
-            <input type="password" id="passwordInput" placeholder="Enter Access Code">
-            <button onclick="checkLogin()" style="background: #2196F3; color: white; border: none;">Login</button>
+            <input type="password" id="passInput" placeholder="Enter Password (1234)">
+            <button onclick="login()" style="background: #2196F3; color: white; border: none;">Login</button>
             <div id="loginError" class="error"></div>
         </div>
 
         <div id="uploadSection" style="display: none;">
-            <h3>Upload File (>100MB)</h3>
+            <h3>Project File Upload</h3>
             <form id="uploadForm">
                 <input type="file" id="fileInput" required>
-                <button type="submit" id="submitBtn" style="background: #4CAF50; color: white; border: none;">Start Upload</button>
+                <button type="submit" id="btn" style="background: #4CAF50; color: white; border: none;">Upload to Drive</button>
             </form>
             <div id="progressBarContainer"><div id="progressBar">0%</div></div>
             <div id="status"></div>
-            <hr>
-            <button onclick="logout()" style="background: #eee; border: none; font-size: 12px;">Logout</button>
+            <hr><button onclick="location.reload()" style="background: #eee; border: none;">Logout</button>
         </div>
     </div>
 
     <script>
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbye3N8PuF85659CNE8mmt_VLhgk6Ld8E4Hh9356dOqEwj4qpP5Hk09FQDsjGGtV-ZU_/exec";
-        let userPassword = "";
+        const WEB_APP_URL = "YOUR_WEB_APP_URL_HERE"; // PASTE YOUR URL HERE
+        let pwd = "";
 
-        function checkLogin() {
-            const pass = document.getElementById('passwordInput').value;
-            if (pass) {
-                userPassword = pass; // Store temporarily
-                document.getElementById('loginSection').style.display = 'none';
-                document.getElementById('uploadSection').style.display = 'block';
-            }
+        function login() {
+            pwd = document.getElementById('passInput').value;
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'block';
         }
 
-        function logout() { location.reload(); }
-
-        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const file = document.getElementById('fileInput').files[0];
-            const statusDiv = document.getElementById('status');
-            const submitBtn = document.getElementById('submitBtn');
-            const progBar = document.getElementById('progressBar');
-            const progCont = document.getElementById('progressBarContainer');
+            const status = document.getElementById('status');
+            const btn = document.getElementById('btn');
+            const pBar = document.getElementById('progressBar');
+            const pCont = document.getElementById('progressBarContainer');
 
-            statusDiv.innerText = "Authenticating...";
-            submitBtn.disabled = true;
+            status.className = ""; status.innerText = "Connecting to Google...";
+            btn.disabled = true;
 
             try {
-                // 1. Get Resumable URL + Validate Password
-                const initResp = await fetch(WEB_APP_URL, {
+                const res = await fetch(WEB_APP_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({
-                        action: "getUploadUrl",
-                        password: userPassword,
-                        filename: file.name,
-                        mimeType: file.type || 'application/octet-stream'
-                    })
+                    body: JSON.stringify({ action: "getUploadUrl", password: pwd, filename: file.name, mimeType: file.type })
                 });
-                // ... inside your event listener ..
-                const initData = await initResp.json();
-               // ADD THIS CHECK:
-                if (initData.status !== 'success' || !initData.uploadUrl) {
-                    throw new Error(initData.message || "Could not retrieve Upload URL from Google.");
-                }
-                
-                const uploadUrl = initData.uploadUrl;
-                // ... now the XHR will have a real URL ...
-                // 2. Upload Direct to Google
-                progCont.style.display = "block";
+                const data = await res.json();
+                if (data.status !== 'success') throw new Error(data.message);
+
+                pCont.style.display = "block";
                 const xhr = new XMLHttpRequest();
-                xhr.open("PUT", initData.uploadUrl, true);
-
+                xhr.open("PUT", data.uploadUrl, true);
                 xhr.upload.onprogress = (ev) => {
-                    const percent = Math.round((ev.loaded / ev.total) * 100);
-                    progBar.style.width = percent + "%";
-                    progBar.innerText = percent + "%";
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    pBar.style.width = pct + "%"; pBar.innerText = pct + "%";
                 };
-
                 xhr.onload = () => {
-                    submitBtn.disabled = false;
+                    btn.disabled = false;
                     if (xhr.status === 200 || xhr.status === 201) {
-                        statusDiv.className = "success";
-                        statusDiv.innerText = "Upload Complete!";
-                    } else {
-                        throw new Error("Upload failed on Google side.");
-                    }
+                        status.className = "success"; status.innerText = "Upload Success!";
+                    } else { status.className = "error"; status.innerText = "Direct Upload Error."; }
                 };
-
                 xhr.send(file);
-
             } catch (err) {
-                submitBtn.disabled = false;
-                statusDiv.className = "error";
-                statusDiv.innerText = err.message;
-                if (err.message.includes("Unauthorized")) logout();
+                btn.disabled = false;
+                status.className = "error"; status.innerText = err.message;
             }
         });
     </script>
